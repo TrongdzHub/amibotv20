@@ -7,7 +7,9 @@ local RunService = game:GetService("RunService")
 
 -- SETTINGS
 local FOV_RADIUS = 120
-local SMOOTHNESS = 0.08
+local SMOOTHNESS = 0.18
+local AIM_STRENGTH = 0.85
+local BULLET_BEND = 0.25
 
 _G.Aimbot = false
 local holding = false
@@ -42,7 +44,7 @@ btn.MouseButton1Click:Connect(function()
     btn.Text = "AIM: " .. (_G.Aimbot and "ON" or "OFF")
 end)
 
--- FOV CIRCLE (GIỮA MÀN)
+-- FOV
 local circle = Drawing.new("Circle")
 circle.Radius = FOV_RADIUS
 circle.Thickness = 2
@@ -50,13 +52,13 @@ circle.Filled = false
 circle.Color = Color3.fromRGB(0,255,255)
 circle.Visible = true
 
--- LINE AIM
+-- LINE
 local line = Drawing.new("Line")
 line.Thickness = 2
 line.Color = Color3.fromRGB(255,0,0)
 line.Visible = false
 
--- TAP SCREEN
+-- INPUT
 UIS.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch then
         holding = true
@@ -69,22 +71,18 @@ UIS.InputEnded:Connect(function(input)
     end
 end)
 
--- GET TARGET (THEO TÂM MÀN)
+-- TARGET
 local function getTarget()
-
     local closest = nil
     local shortest = FOV_RADIUS
-
     local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
 
     for _,v in pairs(game.Players:GetPlayers()) do
         if v ~= player and v.Character and v.Character:FindFirstChild("Head") then
-            
             local pos, onScreen = camera:WorldToViewportPoint(v.Character.Head.Position)
 
             if onScreen then
                 local dist = (Vector2.new(pos.X,pos.Y) - center).Magnitude
-
                 if dist < shortest then
                     shortest = dist
                     closest = v
@@ -96,12 +94,19 @@ local function getTarget()
     return closest
 end
 
--- MAIN LOOP
+-- FAKE SILENT AIM
+local function getAimDirection(targetPos)
+    local camPos = camera.CFrame.Position
+    local original = camera.CFrame.LookVector
+    local desired = (targetPos - camPos).Unit
+
+    return original:Lerp(desired, BULLET_BEND)
+end
+
+-- LOOP
 RunService.RenderStepped:Connect(function()
 
     local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-
-    -- FOV luôn giữa
     circle.Position = center
 
     if _G.Aimbot and holding then
@@ -113,17 +118,26 @@ RunService.RenderStepped:Connect(function()
             local target = getTarget()
 
             if target and target.Character then
-                
                 local head = target.Character:FindFirstChild("Head")
 
                 if head then
+                    local dir = getAimDirection(head.Position)
+
                     local camPos = camera.CFrame.Position
-                    local direction = (head.Position - camPos).Unit
+                    local newCF = CFrame.new(camPos, camPos + dir)
 
-                    local newCF = CFrame.new(camPos, camPos + direction)
-                    camera.CFrame = camera.CFrame:Lerp(newCF, SMOOTHNESS)
+                    local smoothCF = camera.CFrame:Lerp(newCF, SMOOTHNESS)
+                    camera.CFrame = camera.CFrame:Lerp(smoothCF, AIM_STRENGTH)
 
-                    -- DRAW LINE
+                    -- RANDOM (LEGIT)
+                    local jitter = Vector3.new(
+                        math.random(-2,2)/100,
+                        math.random(-2,2)/100,
+                        0
+                    )
+                    camera.CFrame = camera.CFrame * CFrame.new(jitter)
+
+                    -- LINE
                     local pos, onScreen = camera:WorldToViewportPoint(head.Position)
 
                     if onScreen then
@@ -134,15 +148,12 @@ RunService.RenderStepped:Connect(function()
                         line.Visible = false
                     end
                 end
-
             else
                 line.Visible = false
             end
-
         else
             line.Visible = false
         end
-
     else
         line.Visible = false
     end
